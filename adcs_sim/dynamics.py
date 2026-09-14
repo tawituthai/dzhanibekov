@@ -1,4 +1,4 @@
-"""Rigid-body rotational dynamics  (node F4).
+r"""Rigid-body rotational dynamics  (node F4).
 
 Conventions inherited: scalar-first Hamilton quaternion; omega and the inertia
 matrix J are BOTH expressed in the BODY frame; torque in N*m, omega in rad/s.
