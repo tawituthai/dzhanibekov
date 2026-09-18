@@ -55,7 +55,7 @@ def _run(sigma_deg, seed, T=200.0, meas_every=5, q0_err_deg=20.0):
     R = sigma**2 * np.eye(3) if sigma > 0 else np.eye(3)*1e-8
     rng = np.random.default_rng(seed)
     qt = q_true.copy()
-    errs = []
+    errs = [f.error_deg(qt)]                     # <-- record BEFORE any update
     for k in range(int(T/DT)):
         t = k*DT
         qt = normalize(rk4_step(lambda q, u: q_dot(q, OMEGA), qt, t, DT))
