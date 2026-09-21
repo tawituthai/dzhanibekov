@@ -94,7 +94,7 @@ class MEKF:
         # raise NotImplementedError("implement the MEKF predict (q_hat and P)")
 
     # ---- UPDATE + RESET : fold one vector measurement into the estimate ----
-    def update_vector(self, meas_body, ref_inertial, R):
+    def update_vector(self, meas_body, ref_inertial, R): 
         """Update with one unit vector measured in body vs its inertial reference.
 
         meas_body    : (3,) measured unit vector in the BODY frame (e.g. sun sensor)
