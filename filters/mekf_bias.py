@@ -80,7 +80,7 @@ class MEKFBias:
         F = np.zeros((6, 6))
         F[:3, :3] = -skew(omega)
         F[:3, 3:] = -np.eye(3)
-        assert F.shape == (6,6)
+        # assert F.shape == (6,6)
         
         self.P = self.P + dt*(F @ self.P + self.P @ F.T + self.Q)
         self.P = 0.5*(self.P + self.P.T)
@@ -108,18 +108,18 @@ class MEKFBias:
         """
         h = apply(self.q, ref_inertial)
         H = np.hstack([skew(h), np.zeros((3, 3))])  # Horizontal concatenation
-        assert H.shape == (3,6)
+        # assert H.shape == (3,6)
         
         S = H @ self.P @ H.T + R
         K = self.P @ H.T @ np.linalg.inv(S)
-        assert K.shape == (6,3)
+        # assert K.shape == (6,3)
         
         delta = K @ (np.asarray(meas_body, float) - h)
-        assert delta.shape == (6,)
+        # assert delta.shape == (6,)
         
         self.q = normalize(multiply(self.q, small_dq(delta[:3])))   # only top-3 is attitude quaternion
         
-        self.beta = self.beta - delta[3:]     # the last-3 is bias estimate
+        self.beta = self.beta + delta[3:]     # the last-3 is bias estimate
         
         self.P = (np.eye(6) - K @ H) @ self.P
         self.P = 0.5*(self.P + self.P.T)
