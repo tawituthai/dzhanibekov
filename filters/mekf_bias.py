@@ -134,3 +134,101 @@ class MEKFBias:
     def bias_error_deg_s(self, beta_true):
         """Gyro-bias estimate error magnitude, in deg/s."""
         return np.degrees(np.linalg.norm(self.beta - np.asarray(beta_true, float)))
+
+    def error_state(self, q_true, beta_true):
+        """The true 6-vector error [dtheta(3); dbeta(3)] the filter is estimating.
+
+        The reset RIGHT-multiplies (q_hat <- q_hat (x) dq), so the error
+        quaternion consistent with that convention is
+
+            dq = conj(q_true) (x) q_hat,      dtheta = 2 * dq[1:]
+
+        (sign-fixed so dq[0] >= 0 -- q and -q are the same rotation).
+        This is the quantity whose covariance P claims to be; nees() below
+        turns it into a consistency statistic.
+        """
+        dq = multiply(conjugate(np.asarray(q_true, float)), self.q)
+        if dq[0] < 0:
+            dq = -dq
+        dtheta = 2.0 * dq[1:]
+        dbeta = self.beta - np.asarray(beta_true, float)
+        return np.concatenate([dtheta, dbeta])
+
+    def nees(self, q_true, beta_true):
+        """Normalized Estimation Error Squared:  e^T P^-1 e,  e = error_state.
+
+        For a CONSISTENT filter this averages to the state dimension, 6.
+        Much above 6 => P is too small, the filter is overconfident (Q or R
+        understated). Much below 6 => P is too big, the filter is timid and
+        throwing away information. This is the number that tells you whether
+        your datasheet-derived Q is actually right.
+        """
+        e = self.error_state(q_true, beta_true)
+        return float(e @ np.linalg.solve(self.P, e))
+
+
+# --------------------------------------------------------------------------
+# YOUR TASK -- node E3, criterion 2: build Q from a real datasheet
+# --------------------------------------------------------------------------
+def gyro_noise_from_datasheet(arw_deg_rthr, bias_instab_deg_hr, tau_bias_s=1000.0):
+    """Datasheet numbers -> the two spectral densities in M&C Eq. 6.38. <-- YOUR TASK
+
+    M&C's gyro model (Eq. 6.38) is
+
+        omega_gyro = omega_true + beta + eta_v ,   E[eta_v eta_v^T] = sigma_v^2 I d(t-t')
+        beta_dot   = eta_u                     ,   E[eta_u eta_u^T] = sigma_u^2 I d(t-t')
+
+    Both sigmas are DENSITIES, not per-sample standard deviations. They are
+    what goes into Q for the covariance ODE  P_dot = F P + P F^T + Q:
+
+        Q = diag( sigma_v^2 * ones(3),  sigma_u^2 * ones(3) )
+
+    INPUT 1 -- ARW (angle random walk), quoted in deg/sqrt(hr).
+        This IS sigma_v, in disguised units. It says: integrate the gyro for
+        t seconds with no signal and the angle error grows as sigma_v*sqrt(t).
+        Convert deg/sqrt(hr) -> rad/sqrt(s):
+            deg -> rad   : multiply by pi/180
+            /sqrt(hr) -> /sqrt(s) : divide by sqrt(3600) = 60
+        so   sigma_v = arw_deg_rthr * (pi/180) / 60      [rad/s^0.5]
+
+    INPUT 2 -- in-run bias instability, quoted in deg/hr.
+        This is NOT sigma_u. It is the FLOOR of the Allan deviation -- the
+        best the bias ever gets, at one particular averaging time. The random
+        walk that sigma_u describes is the rising +1/2-slope branch to its
+        right, and datasheets almost never tabulate it (on the ADIS16505 you
+        can only read it off the Allan plot, Fig. 7).
+        So you BOUND it: assume the bias wanders by about the bias-instability
+        amount over a correlation time tau_bias_s. A random walk covers
+        sigma_u*sqrt(tau) in time tau, hence
+            sigma_u ~= BI_rad_per_s / sqrt(tau_bias_s)   [rad/s^1.5]
+        with BI_rad_per_s = bias_instab_deg_hr * (pi/180) / 3600.
+        tau_bias_s = 1000 is a common default. STATE IT AS AN ASSUMPTION --
+        this is an engineering bound, not a datasheet value.
+
+    Accept scalars or (3,) arrays for either input (the ADIS16505 quotes a
+    different ARW for z than for x,y). Return (sigma_v, sigma_u), each a
+    (3,) array, by np.broadcast_to-ing scalars up to 3.
+    """
+    sigma_v = np.asarray(arw_deg_rthr) * (np.pi/180) / 60  # unit [rad/s^0.5]
+    
+    bias_rad_per_s = np.asarray(bias_instab_deg_hr) * (np.pi/180) / 3600
+    sigma_u = bias_rad_per_s / np.sqrt(tau_bias_s) # unit [rad/s^1.5]
+    
+    return sigma_v, sigma_u
+    # raise NotImplementedError("implement the datasheet -> (sigma_v, sigma_u) conversion")
+
+
+def Q_from_noise(sigma_v, sigma_u):
+    """Assemble the 6x6 process-noise density from the two gyro densities.
+
+        Q = diag( sigma_v^2 (3),  sigma_u^2 (3) )      [M&C Eq. 6.38]
+
+    Units: the top block is rad^2/s (angle-rate noise density), the bottom
+    block rad^2/s^3 (bias random-walk density). Both are DENSITIES -- the
+    covariance ODE multiplies them by dt itself. If you ever switch to a
+    discrete propagation P <- Phi P Phi^T + Q_d, you need Q_d = Q*dt
+    (Dan Simon Eq. 8.11), not Q.
+    """
+    sv = np.broadcast_to(np.asarray(sigma_v, float), (3,))
+    su = np.broadcast_to(np.asarray(sigma_u, float), (3,))
+    return np.diag(np.concatenate([sv**2, su**2]))

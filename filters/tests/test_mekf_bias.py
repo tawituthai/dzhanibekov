@@ -16,12 +16,22 @@ BIAS_TRUE = np.radians([0.5, -0.3, 0.4])        # gyro bias, rad/s (~0.5 deg/s)
 S_REF = normalize([1.0, 0.2, 0.1])
 B_REF = normalize([-0.3, 0.9, 0.25])
 DT = 0.1
-GYRO_SIG = np.radians(0.02)                     # gyro white noise, rad/s
+
+# GYRO NOISE -- M&C Eq. 6.38 densities. Both the simulated gyro AND the
+# filter's Q derive from these two numbers, so they cannot disagree.
+#   sigma_v : rate-noise density, rad/s^0.5  (== ARW in SI units)
+#   sigma_u : bias random-walk density, rad/s^1.5
+# Per-sample std of the rate noise at sample time dt is sigma_v / sqrt(dt)
+# (Dan Simon Sec. 8.1.1). Earlier versions of this file used ONE number both
+# as the per-sample std and squared into Q -- off by a factor of dt.
+SIGMA_V = 1.1e-4                                 # rad/s^0.5  (~0.38 deg/sqrt(hr), a noisy MEMS)
+SIGMA_U = np.radians(0.001)                      # rad/s^1.5  (deliberately loose)
+GYRO_SAMPLE_SIG = SIGMA_V / np.sqrt(DT)          # per-sample std at DT, rad/s
 
 
 def _make(q0, beta0=None):
     P0 = np.diag([np.radians(30)**2]*3 + [np.radians(1.0)**2]*3)
-    Q = np.diag([GYRO_SIG**2]*3 + [np.radians(0.001)**2]*3)
+    Q = np.diag([SIGMA_V**2]*3 + [SIGMA_U**2]*3)
     return MEKFBias(q0=q0,
                     beta0=np.zeros(3) if beta0 is None else beta0,
                     P0=P0, Q=Q)
@@ -40,7 +50,7 @@ def _run(T=600.0, seed=0, sigma_deg=0.5, meas_every=5, q0_err_deg=20.0,
     for k in range(int(T/DT)):
         t = k*DT
         qt = normalize(rk4_step(lambda q, u: q_dot(q, OMEGA), qt, t, DT))
-        omega_gyro = OMEGA + bias_true + rng.normal(0, GYRO_SIG, 3)
+        omega_gyro = OMEGA + bias_true + rng.normal(0, GYRO_SAMPLE_SIG, 3)
         f.predict(omega_gyro, DT)
         if k % meas_every == 0:
             for ref in (S_REF, B_REF):
