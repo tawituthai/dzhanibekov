@@ -221,7 +221,7 @@ def gyro_noise_from_datasheet(arw_deg_rthr, bias_instab_deg_hr, tau_bias_s=1000.
     sigma_v = np.broadcast_to(sigma_v, (3,))
     
     bias_rad_per_s = np.asarray(bias_instab_deg_hr) * (np.pi/180) / 3600
-    sigma_u = bias_rad_per_s / np.sqrt(tau_bias_s) # unit [rad/s^1.5]
+    sigma_u = bias_rad_per_s * np.sqrt(3 / tau_bias_s) # unit [rad/s^1.5]
     sigma_u = np.broadcast_to(sigma_u, (3,))
     
     return sigma_v, sigma_u
