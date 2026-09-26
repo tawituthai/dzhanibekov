@@ -7,9 +7,9 @@ CubeSat). Numbers from its datasheet specification table:
     in-run bias stability 1.5 / 2.3 / 1.7 deg/hr     (x / y / z)
 
 Rate random walk is NOT tabulated -- it is only visible as the +1/2-slope
-branch of the Allan deviation plot -- so sigma_u is bounded from the bias
-instability with an assumed correlation time (gyro_noise_from_datasheet
-docstring).
+branch of the Allan deviation plot -- so sigma_u is inferred by pinning that
++1/2 line (IEEE Std 952-2020 Eq. C.7) to the bias-instability floor at an
+assumed averaging time tau_B (gyro_noise_from_datasheet docstring).
 
 THE GATE is test_DATASHEET_Q_IS_CONSISTENT: a Monte Carlo where the simulated
 gyro is generated from the SAME (sigma_v, sigma_u) that build Q. If the
@@ -43,8 +43,9 @@ def test_arw_converts_to_sigma_v():
 
 def test_bias_instability_bounds_sigma_u():
     _, su = gyro_noise_from_datasheet(ARW, BI, TAU_B)
-    # 1.5 deg/hr = 7.272e-6 rad/s ; / sqrt(1000) = 2.2997e-7 rad/s^1.5
-    assert np.allclose(su, [2.2997e-7, 3.5262e-7, 2.6063e-7], rtol=1e-4)
+    # IEEE 952 Eq. C.7: +1/2 line pinned at (tau_B, BI)  ->  sigma_u = BI * sqrt(3 / tau_B)
+    # 1.5 deg/hr = 7.272e-6 rad/s ; * sqrt(3/1000) = 3.9832e-7 rad/s^1.5
+    assert np.allclose(su, [3.9832e-7, 6.1075e-7, 4.5142e-7], rtol=1e-4)
 
 
 def test_scalars_broadcast_to_three_axes():

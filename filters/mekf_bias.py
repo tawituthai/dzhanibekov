@@ -197,22 +197,32 @@ def gyro_noise_from_datasheet(arw_deg_rthr, bias_instab_deg_hr, tau_bias_s=1000.
         walk that sigma_u describes is the rising +1/2-slope branch to its
         right, and datasheets almost never tabulate it (on the ADIS16505 you
         can only read it off the Allan plot, Fig. 7).
-        So you BOUND it: assume the bias wanders by about the bias-instability
-        amount over a correlation time tau_bias_s. A random walk covers
-        sigma_u*sqrt(tau) in time tau, hence
-            sigma_u ~= BI_rad_per_s / sqrt(tau_bias_s)   [rad/s^1.5]
+        So you PIN the missing +1/2 line: assume it meets the bias-instability
+        floor at averaging time tau_bias_s (where the floor ends and the
+        curve turns up). IEEE Std 952-2020 Eq. C.7 (p. 78) gives the +1/2 line
+        as sigma(tau) = K sqrt(tau/3), with K = sigma_u. Setting it equal to
+        BI at tau = tau_bias_s:
+            K sqrt(tau_bias_s / 3) = BI
+            sigma_u = BI_rad_per_s * sqrt(3 / tau_bias_s)   [rad/s^1.5]
         with BI_rad_per_s = bias_instab_deg_hr * (pi/180) / 3600.
         tau_bias_s = 1000 is a common default. STATE IT AS AN ASSUMPTION --
-        this is an engineering bound, not a datasheet value.
+        this is an engineering estimate, not a datasheet value. Moving
+        tau_bias_s by a decade moves sigma_u by sqrt(10).
+        (Woodman 2007 Eq. 9 gives BI / sqrt(tau_bias_s), sqrt(3) smaller: it
+        treats BI as the std of bias change over tau_bias_s. Vendors measure
+        BI on an Allan plot, so the IEEE form is the consistent one, and the
+        larger -- i.e. more conservative -- Q.)
 
     Accept scalars or (3,) arrays for either input (the ADIS16505 quotes a
     different ARW for z than for x,y). Return (sigma_v, sigma_u), each a
     (3,) array, by np.broadcast_to-ing scalars up to 3.
     """
     sigma_v = np.asarray(arw_deg_rthr) * (np.pi/180) / 60  # unit [rad/s^0.5]
+    sigma_v = np.broadcast_to(sigma_v, (3,))
     
     bias_rad_per_s = np.asarray(bias_instab_deg_hr) * (np.pi/180) / 3600
     sigma_u = bias_rad_per_s / np.sqrt(tau_bias_s) # unit [rad/s^1.5]
+    sigma_u = np.broadcast_to(sigma_u, (3,))
     
     return sigma_v, sigma_u
     # raise NotImplementedError("implement the datasheet -> (sigma_v, sigma_u) conversion")
