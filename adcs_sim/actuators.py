@@ -49,9 +49,10 @@ def saturate_dipole(m_cmd, m_max):
     m_max = np.asarray(m_max, float)
     m_cmd = np.asarray(m_cmd, float)
     
-    if (m_cmd >= m_max).any() :
-        ratio = np.abs(np.asarray(m_cmd))/m_max
-        m_cmd = m_cmd/np.max(ratio)
+    ratio = np.abs(np.asarray(m_cmd))/m_max
+    ratio_max = np.max(ratio)
+    if ratio_max > 1 :
+        m_cmd = m_cmd/ratio_max
     
     return m_cmd
     # raise NotImplementedError("implement direction-preserving dipole saturation")

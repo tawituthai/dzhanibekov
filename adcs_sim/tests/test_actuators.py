@@ -115,3 +115,7 @@ def test_MAGNETORQUERS_CANNOT_CHANGE_MOMENTUM_ALONG_B():
 
     assert across[-1] < 0.1 * across[0]                   # perpendicular momentum: mostly gone
     assert np.ptp(along) < 1e-6 * np.linalg.norm(H_eci[0])  # along B: untouched
+
+def test_saturation_handles_negative_commands():
+    """Rod limits are symmetric: -2 is as far over the limit as +2."""
+    assert np.allclose(saturate_dipole([-2.0, -1.0, 0.0], 0.2), [-0.2, -0.1, 0.0])
