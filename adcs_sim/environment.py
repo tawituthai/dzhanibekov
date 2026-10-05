@@ -32,19 +32,32 @@ _G10, _G11, _H11 = -29404.8, -1450.9, 4652.5
 # ==========================================================================
 # ENVIRONMENT (truth reference vectors in ECI)
 # ==========================================================================
-def magnetic_field_eci(r_eci):
+OMEGA_EARTH = 7.2921159e-5            # rad/s, Earth sidereal rotation rate
+
+
+def magnetic_field_eci(r_eci, t=0.0):
     """Tilted-dipole geomagnetic field at position r_eci (km), returned in nT.
 
     Centered-dipole model (IGRF n=1):
         B(r) = (a^3 B0 / r^3) [ 3 (m_hat . r_hat) r_hat - m_hat ]
     with dipole strength B0 = sqrt(g10^2 + g11^2 + h11^2) and axis m_hat built
     from the three n=1 coefficients. (Dipole tilt ~11 deg from the spin axis.)
+
+    t : seconds since epoch. The dipole is fixed to the EARTH, so in ECI its
+        axis turns about z once per sidereal day: m_hat(t) = Rz(OMEGA_EARTH t) m_hat.
+        At t = 0 the ECEF and ECI axes are taken as aligned (a simplification:
+        a real epoch needs the Greenwich sidereal angle). This daily sweep of
+        the ~11 deg tilt is what gives low-inclination orbits most of their
+        magnetic controllability -- see C1.
     """
     r_eci = np.asarray(r_eci, float)
     r = np.linalg.norm(r_eci)
     r_hat = r_eci / r
     B0 = np.sqrt(_G10**2 + _G11**2 + _H11**2)
-    m_hat = -np.array([_G11, _H11, _G10]) / B0        # dipole axis direction
+    m_ecef = -np.array([_G11, _H11, _G10]) / B0       # dipole axis, Earth-fixed
+    th = OMEGA_EARTH * t
+    c, s = np.cos(th), np.sin(th)
+    m_hat = np.array([c*m_ecef[0] - s*m_ecef[1], s*m_ecef[0] + c*m_ecef[1], m_ecef[2]])
     return (R_EARTH**3 * B0 / r**3) * (3.0*np.dot(m_hat, r_hat)*r_hat - m_hat)
 
 
