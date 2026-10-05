@@ -75,11 +75,10 @@ def bdot_law(Bdot_nT_s, B_nT, k):
     Convert BOTH inputs with NT_TO_T first. Sanity check of the units:
     (kg m^2/s)(T/s)/T^2 = N m / T = A m^2.
     """
+    Bdot_T_s = np.asarray(Bdot_nT_s, float)*NT_TO_T
+    B_T = np.asarray(B_nT, float)*NT_TO_T
     
-    Bdot_T_s = Bdot_nT_s*NT_TO_T
-    B_T = B_nT*NT_TO_T
-    
-    return -k*(Bdot_T_s)/np.pow(np.linalg.norm(B_T), 2)
+    return -k*(Bdot_T_s)/np.dot(B_T, B_T)
     # raise NotImplementedError("implement m = -k B_dot / |B|^2 in tesla")
 
 
