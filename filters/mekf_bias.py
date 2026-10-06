@@ -66,13 +66,21 @@ class MEKFBias:
         2. PROPAGATE q_hat with omega_hat, exactly as Stage 1 (rk4_step + q_dot,
            then renormalize).
         3. beta_hat does NOT change -- a random walk has no deterministic drift.
-        4. PROPAGATE P with  P <- P + dt (F P + P F^T + Q),  where
+        4. PROPAGATE P (SY1 revision -- see filters/tests/test_psd.py):
 
-               F = [[ -skew(omega_hat),  -I3 ],
-                    [  0_3x3,             0_3x3 ]]
+               F   = [[ -skew(omega_hat),  -I3 ],
+                      [  0_3x3,             0_3x3 ]]
+               Phi = I6 + F dt                          (Dan Simon Eq. 8.23)
+               P  <- Phi P Phi^T + Q dt                 (Dan Simon Eq. 8.27)
 
-           Build it with np.zeros((6,6)) and fill the two nonzero blocks.
+           Build F with np.zeros((6,6)) and fill the two nonzero blocks.
            Keep P symmetric.
+
+           The E3 version used the Euler step P <- P + dt (F P + P F^T + Q).
+           Expand Eq. 8.27 and that is what you get MINUS the F P F^T dt^2
+           term -- and without it P can go indefinite. SY1's kick test (7 deg/s,
+           in eclipse) drove the bias variance negative -> bias_sigma = NaN.
+           Phi P Phi^T is a congruence: PSD in, PSD out.        <-- YOUR TASK (SY1)
         """
         omega = omega_gyro - self.beta
         self.q = normalize(rk4_step(lambda q, u: q_dot(q, omega), self.q, 0.0, dt))
@@ -82,7 +90,13 @@ class MEKFBias:
         F[:3, 3:] = -np.eye(3)
         # assert F.shape == (6,6)
         
-        self.P = self.P + dt*(F @ self.P + self.P @ F.T + self.Q)
+        # (E3 gate)
+        # self.P = self.P + dt*(F @ self.P + self.P @ F.T + self.Q)
+        
+        # (SY1 gate)
+        Phi = np.eye(6) + (F*dt)
+        self.P = Phi @ self.P @ Phi.T + self.Q*dt
+        
         self.P = 0.5*(self.P + self.P.T)
         # raise NotImplementedError("implement the Stage 2 predict (debias, q_hat, P)")
 
