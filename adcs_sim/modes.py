@@ -82,7 +82,7 @@ def bias_sigma_dps(P):
     bias_axis = np.diag(bias_matrix)
     bias_maximum = np.max(bias_axis)
     
-    return np.sqrt(bias_maximum)*(180/np.pi)    
+    return np.degrees(np.sqrt(bias_maximum))    
     # raise NotImplementedError("implement the worst-axis bias 1-sigma in deg/s")
 
 
@@ -101,11 +101,13 @@ def next_mode(mode, rate_dps, bias_sig_dps, cfg):
     Raise ValueError for an unknown mode -- flight software must never fall
     through silently on a corrupted mode variable.
     """
-    if (rate_dps < cfg.enter_dps) and (bias_sig_dps < cfg.bias_gate_dps) : 
-        mode = RATE_DAMP
-    elif (rate_dps > cfg.exit_dps) :
-        mode = DETUMBLE
-    return mode
+    if mode == DETUMBLE:
+        if rate_dps < cfg.enter_dps and bias_sig_dps < cfg.bias_gate_dps:
+            return RATE_DAMP
+        return DETUMBLE
+    if mode == RATE_DAMP:
+        return DETUMBLE if rate_dps > cfg.exit_dps else RATE_DAMP
+    raise ValueError(f"unknown mode {mode!r}")
     # raise NotImplementedError("implement the DETUMBLE <-> RATE_DAMP transition logic")
 
 
