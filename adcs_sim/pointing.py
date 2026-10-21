@@ -67,7 +67,7 @@ from adcs_sim.wheels import inertia_rw, propagate_rw
 #   comment, why the design value is not simply 30 s.
 # --------------------------------------------------------------------------
 ZETA = 0.707
-T_SETTLE_DESIGN = 30.0
+T_SETTLE_DESIGN = 28.0
 
 
 # --------------------------------------------------------------------------
@@ -135,14 +135,28 @@ def pd_torque(q_BN, omega, h_s, q_RN, K, P, J_RW, Gs, L_known=None):
         [I_RW] omega_dot = -K eps - [P] omega     for ANY omega and h_s.
     Return (3,).
     """
-    raise NotImplementedError("implement S&J Eq. 7.166")
+    L = np.zeros(3) if L_known is None else np.asanyarray(L_known, float)
+    
+    # Attitude error quaternion, take only the vector part -- scalar first
+    eps = attitude_error(q_BN, q_RN)[1:]
+    
+    omega = np.asarray(omega, float)
+    h_s = np.asarray(h_s, float)
+    # Calculate required torque
+    H = J_RW @ omega + Gs @ h_s         # total body + wheel momentum
+    L_r = (K @ eps) + (P @ omega) - np.cross(omega, H) + L
+    return L_r
+    # raise NotImplementedError("implement S&J Eq. 7.166")
 
 
 def allocate_pinv(L_r, Gs):
     """Minimum-norm wheel torques:  u_s = [Gs]^T ([Gs][Gs]^T)^-1 L_r   <-- YOUR TASK
     (M&C Sec. 4.8.3). Solve, do not invert.  Return (N,).
     """
-    raise NotImplementedError("implement the pseudoinverse")
+    Gs = np.asarray(Gs, dtype=float)
+    L_r = np.asarray(L_r, dtype=float)
+    return Gs.T @ np.linalg.solve(Gs @ Gs.T, L_r)
+    # raise NotImplementedError("implement the pseudoinverse")
 
 
 def scale_to_limit(u, u_max):
@@ -154,7 +168,13 @@ def scale_to_limit(u, u_max):
         if max_i |u_i| > u_max:  u <- u * u_max / max_i |u_i|
     (Same idea as A2's saturate_dipole.)  Return (N,), a new array.
     """
-    raise NotImplementedError("implement direction-preserving scaling")
+    u_scale = np.array(u, dtype=float)
+    max_u = np.max(np.abs(u_scale))
+    if max_u > u_max:
+        u_scale = u_scale * (u_max / max_u)
+        
+    return u_scale
+    # raise NotImplementedError("implement direction-preserving scaling")
 
 
 # --------------------------------------------------------------------------
