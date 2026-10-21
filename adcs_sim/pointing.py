@@ -69,6 +69,8 @@ from adcs_sim.wheels import inertia_rw, propagate_rw
 ZETA = 0.707
 T_SETTLE_DESIGN = 28.0
 
+# 4.6/(zeta*wn) is only the envelope estimate: 30 s design settles at 30.35 s.
+# Design to 28 s for margin on the 30 s spec.
 
 # --------------------------------------------------------------------------
 # YOUR TASKS
@@ -91,8 +93,6 @@ def attitude_error(q_BN, q_RN):
     if q_BR[0] < 0 :
         q_BR = -q_BR
     return q_BR
-    # raise NotImplementedError("compose q_BR and take the short way")
-
 
 def gains_from_spec(J, zeta, t_settle, pct=0.01):
     """Inertia-scaled PD gains from a damping ratio and settling time. <-- YOUR TASK
@@ -119,8 +119,6 @@ def gains_from_spec(J, zeta, t_settle, pct=0.01):
     P = Kd * J
     
     return K, P
-    # raise NotImplementedError("implement JvV Eqs. 6.3.8-6.3.9")
-
 
 def pd_torque(q_BN, omega, h_s, q_RN, K, P, J_RW, Gs, L_known=None):
     """Torque the wheel cluster must produce, L_r = [Gs] u_s.         <-- YOUR TASK
@@ -146,8 +144,6 @@ def pd_torque(q_BN, omega, h_s, q_RN, K, P, J_RW, Gs, L_known=None):
     H = J_RW @ omega + Gs @ h_s         # total body + wheel momentum
     L_r = (K @ eps) + (P @ omega) - np.cross(omega, H) + L
     return L_r
-    # raise NotImplementedError("implement S&J Eq. 7.166")
-
 
 def allocate_pinv(L_r, Gs):
     """Minimum-norm wheel torques:  u_s = [Gs]^T ([Gs][Gs]^T)^-1 L_r   <-- YOUR TASK
@@ -156,8 +152,6 @@ def allocate_pinv(L_r, Gs):
     Gs = np.asarray(Gs, dtype=float)
     L_r = np.asarray(L_r, dtype=float)
     return Gs.T @ np.linalg.solve(Gs @ Gs.T, L_r)
-    # raise NotImplementedError("implement the pseudoinverse")
-
 
 def scale_to_limit(u, u_max):
     """Keep the commanded DIRECTION when a wheel would exceed u_max.  <-- YOUR TASK
@@ -174,8 +168,6 @@ def scale_to_limit(u, u_max):
         u_scale = u_scale * (u_max / max_u)
         
     return u_scale
-    # raise NotImplementedError("implement direction-preserving scaling")
-
 
 # --------------------------------------------------------------------------
 # given
