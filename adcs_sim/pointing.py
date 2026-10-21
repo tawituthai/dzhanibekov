@@ -60,23 +60,24 @@ from adcs_sim.quaternion import conjugate, multiply, normalize
 from adcs_sim.wheels import inertia_rw, propagate_rw
 
 # --------------------------------------------------------------------------
-# YOUR DESIGN CHOICE (criterion 2: tune to a spec on the nonlinear plant)
+# Design point (criterion 2: tuned to a spec on the nonlinear plant)
 #   Spec (JvV Sec. 3.2 / 6.3.2.2): 10 deg step, overshoot <= 5 %,
-#   1 % settling time <= 30 s.  Pick zeta and the DESIGN settling time you
-#   feed to gains_from_spec so that the gate test passes. Then explain, in a
-#   comment, why the design value is not simply 30 s.
+#   1 % settling time <= 30 s.
+#   ln(1/pct)/(zeta wn) is only the decay-ENVELOPE estimate, not the true
+#   settling time: zeta = 0.707 designed to 30 s settles at 30.35 s (fails).
+#   zeta = 0.70 passes at 29.98 s only by luck -- settling time jumps with
+#   zeta. Keep zeta = 0.707 and design to 28 s for margin:
+#   -> 28.35 s, 4.1 % overshoot, peak wheel torque 0.64 mNm.
 # --------------------------------------------------------------------------
 ZETA = 0.707
 T_SETTLE_DESIGN = 28.0
 
-# 4.6/(zeta*wn) is only the envelope estimate: 30 s design settles at 30.35 s.
-# Design to 28 s for margin on the 30 s spec.
 
 # --------------------------------------------------------------------------
-# YOUR TASKS
+# Controller
 # --------------------------------------------------------------------------
 def attitude_error(q_BN, q_RN):
-    """Error quaternion q_BR: body B relative to the reference R.      <-- YOUR TASK
+    """Error quaternion q_BR: body B relative to the reference R.
 
     1. Compose:  [BR] = [BN][RN]^T.  In this repo's convention that is
            q_BR = q_RN* (x) q_BN
@@ -86,16 +87,18 @@ def attitude_error(q_BN, q_RN):
        points along the SHORT way back (rotation angle <= 180 deg).
     Return (4,) unit quaternion, scalar first.
     """
-    # Step 1: q_BR = q_RN* (x) q_BN
+    # Step 1: [BR] = [BN][RN]^T  ->  q_BR = q_RN* (x) q_BN
     q_BR = multiply(conjugate(normalize(q_RN)), normalize(q_BN))
-    
-    # Step 2: Check for shortest path, make sure the scalar part of quaternion > 0
-    if q_BR[0] < 0 :
+
+    # Step 2: shortest path -- keep beta0 >= 0. Flip ALL four components:
+    # (-q0, eps) would be a different attitude (360 deg - Phi).
+    if q_BR[0] < 0:
         q_BR = -q_BR
     return q_BR
 
+
 def gains_from_spec(J, zeta, t_settle, pct=0.01):
-    """Inertia-scaled PD gains from a damping ratio and settling time. <-- YOUR TASK
+    """Inertia-scaled PD gains from a damping ratio and settling time.
 
     1. Settling time: the error envelope decays as exp(-zeta wn t). It falls
        to pct of its start when  zeta wn t_settle = ln(1/pct)  (4.6 for 1 %):
@@ -104,24 +107,21 @@ def gains_from_spec(J, zeta, t_settle, pct=0.01):
     3. Scale by the inertia:   K = Kp [J] ,  [P] = Kd [J]
     J : (3,3).  Return (K, P), both (3,3).
     """
-    # Make sure J is an array, and not list
-    J = np.asarray(J, dtype=float)
-    
-    # Step 1
-    wn = np.log(1/pct)/(zeta * t_settle)
-    
-    # Step 2
-    Kp = 2 * (wn**2)
-    Kd = 2 * zeta * wn
-    
-    # Step 3
-    K = Kp * J
-    P = Kd * J
-    
-    return K, P
+    J = np.asarray(J, dtype=float)      # accept nested lists too
+
+    # Step 1: envelope decays to pct at t_settle
+    wn = np.log(1.0 / pct) / (zeta * t_settle)
+
+    # Step 2: JvV Eqs. 6.3.8-6.3.9 (Junaid Eq. 4.66 prints these swapped)
+    Kp = 2.0 * wn**2        # 1/s^2
+    Kd = 2.0 * zeta * wn    # 1/s
+
+    # Step 3: inertia-scaled gains -> same wn and zeta on every axis
+    return Kp * J, Kd * J
+
 
 def pd_torque(q_BN, omega, h_s, q_RN, K, P, J_RW, Gs, L_known=None):
-    """Torque the wheel cluster must produce, L_r = [Gs] u_s.         <-- YOUR TASK
+    """Torque the wheel cluster must produce, L_r = [Gs] u_s.
 
         L_r = K eps + [P] omega - omega x ([I_RW] omega + [Gs] h_s) + L_known
                                          (S&J Eq. 7.166 with omega_r = 0)
@@ -133,28 +133,31 @@ def pd_torque(q_BN, omega, h_s, q_RN, K, P, J_RW, Gs, L_known=None):
         [I_RW] omega_dot = -K eps - [P] omega     for ANY omega and h_s.
     Return (3,).
     """
-    L = np.zeros(3) if L_known is None else np.asanyarray(L_known, float)
-    
-    # Attitude error quaternion, take only the vector part -- scalar first
+    omega = np.asarray(omega, dtype=float)
+    h_s = np.asarray(h_s, dtype=float)
+    K, P = np.asarray(K, dtype=float), np.asarray(P, dtype=float)
+    J_RW, Gs = np.asarray(J_RW, dtype=float), np.asarray(Gs, dtype=float)
+    L = np.zeros(3) if L_known is None else np.asarray(L_known, dtype=float)
+
+    # Vector part of the error quaternion (scalar-first: index 0 is beta0)
     eps = attitude_error(q_BN, q_RN)[1:]
-    
-    omega = np.asarray(omega, float)
-    h_s = np.asarray(h_s, float)
-    # Calculate required torque
-    H = J_RW @ omega + Gs @ h_s         # total body + wheel momentum
-    L_r = (K @ eps) + (P @ omega) - np.cross(omega, H) + L
-    return L_r
+
+    H = J_RW @ omega + Gs @ h_s     # total momentum, body + wheels
+    #      spring      damper      cancel gyroscopic coupling   known torque
+    return K @ eps + P @ omega - np.cross(omega, H) + L
+
 
 def allocate_pinv(L_r, Gs):
-    """Minimum-norm wheel torques:  u_s = [Gs]^T ([Gs][Gs]^T)^-1 L_r   <-- YOUR TASK
+    """Minimum-norm wheel torques:  u_s = [Gs]^T ([Gs][Gs]^T)^-1 L_r
     (M&C Sec. 4.8.3). Solve, do not invert.  Return (N,).
     """
     Gs = np.asarray(Gs, dtype=float)
     L_r = np.asarray(L_r, dtype=float)
     return Gs.T @ np.linalg.solve(Gs @ Gs.T, L_r)
 
+
 def scale_to_limit(u, u_max):
-    """Keep the commanded DIRECTION when a wheel would exceed u_max.  <-- YOUR TASK
+    """Keep the commanded DIRECTION when a wheel would exceed u_max.
 
     A1's limit_wheel_torque clips each wheel on its own (that is the plant).
     Clipping one wheel and not the others turns the body torque away from the
@@ -162,12 +165,12 @@ def scale_to_limit(u, u_max):
         if max_i |u_i| > u_max:  u <- u * u_max / max_i |u_i|
     (Same idea as A2's saturate_dipole.)  Return (N,), a new array.
     """
-    u_scale = np.array(u, dtype=float)
+    u_scale = np.array(u, dtype=float)      # a copy: never modify the caller's array
     max_u = np.max(np.abs(u_scale))
     if max_u > u_max:
-        u_scale = u_scale * (u_max / max_u)
-        
+        u_scale = u_scale * (u_max / max_u)  # same factor on every wheel
     return u_scale
+
 
 # --------------------------------------------------------------------------
 # given
